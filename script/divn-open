@@ -1,0 +1,4 @@
+#!/bin/sh
+
+curl -s -F 'params={"token":"anonymous:dev.meetin.gs"}' http://localhost:5000/open | \
+    perl -nE'/"session":"([^"]+)"/ and say $1'

@@ -1,0 +1,5 @@
+#!/bin/sh
+
+session=$1
+
+curl -sF 'params={"session":"'$session'"}' http://localhost:5000/poll

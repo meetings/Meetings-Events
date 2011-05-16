@@ -1,0 +1,7 @@
+#!/bin/sh
+
+session=$1
+name=$2
+
+curl -s -F 'params={"session":"'$session'","name":"'$name'"}' http://localhost:5000/subscribe | \
+    perl -nE'($s)=/"start":([^,}]+)/, ($f)=/"finish":([^,}]+)/; say "$s $f"'
