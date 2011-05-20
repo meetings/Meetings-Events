@@ -18,9 +18,11 @@ use Plack::Builder;
 use Data::Dumper 'Dumper';
 use URI::Escape qw/uri_escape/;
 
+our $JSONP_CALLBACK;
+
 sub todo { die "Unimplemented: " . join "\n", @_ }
-sub ok   { [200, ['Content-Type', 'text/json'], [JSON::encode_json({result => {@_}})]] }
-sub fail { [200, ['Content-Type', 'text/json'], [JSON::encode_json({error  => {@_}})]] }
+sub ok   { [200, ['Content-Type', 'text/json'], [$JSONP_CALLBACK . '(' . JSON::encode_json({result => {@_}}) . ')']] }
+sub fail { [200, ['Content-Type', 'text/json'], [$JSONP_CALLBACK . '(' . JSON::encode_json({error  => {@_}}) . ')']] }
 
 my %sessions;
 
@@ -43,6 +45,8 @@ sub action (&) {
         my $env    = shift;
         my $req    = Plack::Request->new($env);
         my $params = JSON::decode_json($req->parameters->{params} // "{}");
+
+        $JSONP_CALLBACK = $params->{callback} // 'parseResult';
 
         sub {
             my $respond = shift;
