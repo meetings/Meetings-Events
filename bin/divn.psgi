@@ -39,6 +39,8 @@ my $source_before = -1;
 
 my $secret = 'shared secret';
 
+our %seen_events;
+
 sub action (&) {
     my $action = shift;
 
@@ -87,9 +89,14 @@ sub fetch {
 
             for my $event (@$events) {
                 my $id        = $event->{id};
+                my $updated   = $event->{updated};
                 my $timestamp = $event->{timestamp};
                 my $topics    = Set::Object->new(@{$event->{topics}});
                 my $security  = $event->{security};
+
+                next if exists $seen_events{$id} and $updated <= $seen_events{$id}{updated};
+
+                $seen_events{$id}{updated} = $updated;
 
                 while (my ($session_id, $session) = each %sessions) {
                     while (my ($subscription_name, $subscription) = each %{ $session->{subscriptions} }) {
