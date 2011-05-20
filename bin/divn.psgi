@@ -86,9 +86,8 @@ sub fetch {
                         if ($timestamp >= $subscription->{start}
                                 and ($subscription->{finish} == -1
                                     or $timestamp <= $subscription->{finish})
-                            #and grep { $topics ~~ $_ } @{ $subscription->limit_topics }
-                        )#and not grep { $topics ~~ $_ } @{ $subscription->exclude_topics })
-                        {
+                                and grep { $topics ~~ $_ } @{ $subscription->limit_topics }
+                                and not grep { $topics ~~ $_ } @{ $subscription->exclude_topics }) {
                             push @{ $subscription->{incoming} }, $event;
                         }
 
@@ -110,7 +109,7 @@ sub fetch {
 }
 
 builder {
-    enable 'SimpleLogger', level => 'debug';
+    #enable 'SimpleLogger', level => 'debug';
 
     mount '/open' => action {
         my ($params, $respond) = @_;
