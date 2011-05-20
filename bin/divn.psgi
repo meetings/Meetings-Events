@@ -208,7 +208,7 @@ builder {
         my $start  = $params->{start}  // time;
         my $finish = $params->{finish} // -1;
 
-        unless (exists $sessions{$session_id}) {
+        unless (defined $session_id and exists $sessions{$session_id}) {
             $respond->(fail
                 code    => 301,
                 message => "Invalid session"

@@ -18,6 +18,8 @@ test_psgi Plack::Util::load_psgi("$Bin/../bin/divn.psgi"), sub {
     is $cb->(GET "/open")->code, 200;
 
     is $cb->(GET "/close")->code, 200;
+
+    is $cb->(GET "/subscribe")->code, 200;
 };
 
 done_testing
