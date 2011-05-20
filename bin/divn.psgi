@@ -45,7 +45,12 @@ sub action (&) {
     sub {
         my $env    = shift;
         my $req    = Plack::Request->new($env);
-        my $params = JSON::decode_json($req->parameters->{params} // "{}");
+        my $params = eval { JSON::decode_json($req->parameters->{params} // "{}") };
+
+        if ($@) {
+            warn "Invalid JSON params: $@\n";
+            return fail code => 100, message => 'Invalid params';
+        }
 
         $JSONP_CALLBACK = $params->{callback} // 'parseResult';
 
