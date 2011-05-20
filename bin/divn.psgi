@@ -33,6 +33,7 @@ my $fetch         = "$event_source/fetch";
 
 our $FETCH_STARTUP_DELAY = 1;
 our $FETCH_SYNC_DELAY    = 30;
+our $FETCH_AMOUNT        = 0;
 
 my $source_after  = -1;
 my $source_before = -1;
@@ -71,6 +72,11 @@ our $fetch_timer = AnyEvent->timer(
 
 sub fetch {
     my $uri = "$fetch?secret=" . uri_escape($secret) . "&after=$source_after&before=$source_before";
+
+    if (defined $FETCH_AMOUNT) {
+        $uri .= "&amount=$FETCH_AMOUNT";
+        $FETCH_AMOUNT = undef;
+    }
 
     warn "Fetching events ($uri)...\n";
 
