@@ -196,6 +196,8 @@ builder {
 
         warn "New subscription '$name' for session '$session_id'\n";
         warn "Start: $start, finish: $finish\n";
+        warn "Limit: $limit_topics\n";
+        warn "Exclude: $exclude_topics\n";
 
         $sessions{$session_id}{subscriptions}{$name} = {
             start          => $start,
