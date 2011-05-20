@@ -309,5 +309,7 @@ builder {
             after => 0.1,
             cb    => \&fetch
         );
+
+        $respond->(ok);
     };
 }
