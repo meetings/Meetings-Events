@@ -17,6 +17,7 @@ use Plack::Request;
 use Plack::Builder;
 use Data::Dumper 'Dumper';
 use URI::Escape qw/uri_escape/;
+use Set::Object;
 
 our $JSONP_CALLBACK;
 
@@ -82,16 +83,20 @@ sub fetch {
             for my $event (@$events) {
                 my $id        = $event->{id};
                 my $timestamp = $event->{timestamp};
-                my $topics    = $event->{topics};
+                my $topics    = Set::Object->new(@{$event->{topics}});
                 my $security  = $event->{security};
 
                 while (my ($session_id, $session) = each %sessions) {
                     while (my ($subscription_name, $subscription) = each %{ $session->{subscriptions} }) {
+                        my $limit_topics   = $subscription->{limit_topics};
+                        my $exclude_topics = $subscription->{exclude_topics};
+                        warn "Subscription $subscription_name\n";
+                        warn "Event topics: $topics\n";
+                        warn "Limit topics: $limit_topics\n";
                         if ($timestamp >= $subscription->{start}
-                                and ($subscription->{finish} == -1
-                                    or $timestamp <= $subscription->{finish})
-                                and grep { $topics ~~ $_ } @{ $subscription->limit_topics }
-                                and not grep { $topics ~~ $_ } @{ $subscription->exclude_topics }) {
+                                and ($subscription->{finish} == -1 or $timestamp <= $subscription->{finish})
+                                and grep { $topics == $_ } @$limit_topics
+                                and not grep { $topics == $_ } @$exclude_topics) {
                             push @{ $subscription->{incoming} }, $event;
                         }
 
@@ -162,8 +167,8 @@ builder {
 
         my $session_id     = $params->{session};
         my $name           = $params->{name};
-        my $limit_topics   = $params->{limit_topics};
-        my $exclude_topics = $params->{exclude_topics};
+        my $limit_topics   = Set::Object->new(map { Set::Object->new(@$_) } @{ $params->{limit_topics}   // [] });
+        my $exclude_topics = Set::Object->new(map { Set::Object->new(@$_) } @{ $params->{exclude_topics} // [] });
 
         my $start  = $params->{start}  // time;
         my $finish = $params->{finish} // -1;
@@ -195,10 +200,8 @@ builder {
         };
 
         $respond->(ok
-            result => {
-                start  => $start,
-                finish => $finish
-            }
+            start  => $start,
+            finish => $finish
         );
     };
 
