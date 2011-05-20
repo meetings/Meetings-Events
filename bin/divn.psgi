@@ -100,8 +100,8 @@ sub fetch {
                         warn "Limit topics: $limit_topics\n";
                         if ($timestamp >= $subscription->{start}
                                 and ($subscription->{finish} == -1 or $timestamp <= $subscription->{finish})
-                                and grep { $topics == $_ } @$limit_topics
-                                and not grep { $topics == $_ } @$exclude_topics) {
+                                and grep { $_->contains(@$_) } @$limit_topics
+                            and not grep { $_->contains(@$_) } @$exclude_topics) {
                             push @{ $subscription->{incoming} }, $event;
                         }
 
@@ -172,7 +172,7 @@ builder {
 
         my $session_id     = $params->{session};
         my $name           = $params->{name};
-        my $limit_topics   = Set::Object->new(map { Set::Object->new(@$_) } @{ $params->{limit_topics}   // [] });
+        my $limit_topics   = Set::Object->new(map { Set::Object->new(@$_) } @{ $params->{limit_topics}   // [[]] });
         my $exclude_topics = Set::Object->new(map { Set::Object->new(@$_) } @{ $params->{exclude_topics} // [] });
 
         my $start  = $params->{start}  // time;
