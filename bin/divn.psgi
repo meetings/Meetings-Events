@@ -115,7 +115,7 @@ sub fetch {
                                 and ($subscription->{finish} == -1 or $timestamp <= $subscription->{finish})
                                 and grep { $_->contains(@$_) } @$limit_topics
                             and not grep { $_->contains(@$_) } @$exclude_topics
-                            and grep { $session->{security} == $_ } @$security) {
+                            and grep { $session->{security}->contains(@$_) } @$security) {
                             push @{ $subscription->{incoming} }, $event;
                         }
 
