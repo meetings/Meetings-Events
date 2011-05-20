@@ -269,7 +269,14 @@ builder {
     mount '/poll' => action {
         my ($params, $respond) = @_;
 
-        my $session_id = $params->{session};
+        my $session_id = $params->{session} or do {
+            $respond->(fail
+                code    => 100,
+                message => "Session required"
+            );
+            return
+        };
+
         my $amount     = $params->{amount};
         my $received   = $params->{received};
 
