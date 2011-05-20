@@ -1,3 +1,6 @@
+#!/usr/bin/env perl
+
+use 5.010;
 use strict;
 use warnings;
 
@@ -10,9 +13,9 @@ use HTTP::Request::Common;
 test_psgi Plack::Util::load_psgi("$Bin/../bin/divn.psgi"), sub {
     my $cb = shift;
 
-    my $res = $cb->(GET "/");
+    is $cb->(GET "/")->code, 404;
 
-    is $res->code, 404;
+    is $cb->(GET "/open")->code, 200;
 };
 
 done_testing

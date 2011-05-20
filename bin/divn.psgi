@@ -142,30 +142,37 @@ builder {
     mount '/open' => action {
         my ($params, $respond) = @_;
 
-        my $token  = $params->{token};
+        my $token = $params->{token} or do {
+            $respond->(fail
+                code => 100,
+                reason => "Token required"
+            );
+            return
+        };
 
         http_get "$authenticator?token=$token",
             sub {
                 my ($data, $headers) = @_;
 
-                my $response = JSON::decode_json($data);
+                my $response = eval { JSON::decode_json($data) };
 
-                my @security = @{ $response->{result}{security} || [] };
-
-                if (@security) {
-                    my $session_id = create_uuid_as_string(UUID_RANDOM);
-
-                    warn "New session: $session_id\n";
-
-                    $sessions{$session_id} = {
-                        token    => $token,
-                        security => Set::Object->new(@security),
-                    };
-
-                    $respond->(ok session => $session_id);
-                } else {
-                    $respond->(fail foo => "bar");
+                if ($@) {
+                    $respond->(fail
+                        code   => 101,
+                        reason => "Communication error"
+                    );
                 }
+
+                my $session_id = create_uuid_as_string(UUID_RANDOM);
+
+                warn "New session: $session_id\n";
+
+                $sessions{$session_id} = {
+                    token    => $token,
+                    security => Set::Object->new(@{ $response->{result}{security} || [] }),
+                };
+
+                $respond->(ok session => $session_id);
             };
     };
 
