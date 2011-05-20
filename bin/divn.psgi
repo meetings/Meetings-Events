@@ -199,6 +199,30 @@ builder {
         );
     };
 
+    mount '/unsubscribe' => action {
+        my ($params, $respond) = @_;
+
+        my $session_id = $params->{session};
+        my $name       = $params->{subscription};
+
+        unless (exists $sessions{$session_id}) {
+            $respond->(fail
+                code    => 501,
+                message => "Session does not exist"
+            );
+            return
+        }
+
+        if (delete $sessions{$session_id}{subscriptions}{$name}) {
+            $respond->(ok);
+        } else {
+            $respond->(fail
+                code    => 502,
+                message => "Subscription does not exist"
+            );
+        }
+    };
+
     mount '/poll' => action {
         my ($params, $respond) = @_;
 
