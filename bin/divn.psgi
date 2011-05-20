@@ -98,7 +98,7 @@ sub fetch {
                 my $updated   = $event->{updated};
                 my $timestamp = $event->{timestamp};
                 my $topics    = Set::Object->new(@{$event->{topics}});
-                my $security  = $event->{security};
+                my $security  = Set::Object->new(map { Set::Object->new(@$_) } @{$event->{security}});
 
                 next if exists $seen_events{$id} and $updated <= $seen_events{$id}{updated};
 
@@ -114,7 +114,8 @@ sub fetch {
                         if ($timestamp >= $subscription->{start}
                                 and ($subscription->{finish} == -1 or $timestamp <= $subscription->{finish})
                                 and grep { $_->contains(@$_) } @$limit_topics
-                            and not grep { $_->contains(@$_) } @$exclude_topics) {
+                            and not grep { $_->contains(@$_) } @$exclude_topics
+                            and grep { $session->{security} == $_ } @$security) {
                             push @{ $subscription->{incoming} }, $event;
                         }
 
@@ -158,7 +159,7 @@ builder {
 
                     $sessions{$session_id} = {
                         token    => $token,
-                        security => [ @security ],
+                        security => Set::Object->new(@security),
                     };
 
                     $respond->(ok session => $session_id);
