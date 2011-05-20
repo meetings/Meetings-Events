@@ -144,8 +144,8 @@ builder {
 
         my $token = $params->{token} or do {
             $respond->(fail
-                code => 100,
-                reason => "Token required"
+                code    => 100,
+                message => "Token required"
             );
             return
         };
@@ -158,8 +158,8 @@ builder {
 
                 if ($@) {
                     $respond->(fail
-                        code   => 101,
-                        reason => "Communication error"
+                        code    => 101,
+                        message => "Communication error"
                     );
                 }
 
@@ -179,12 +179,21 @@ builder {
     mount '/close' => action {
         my ($params, $respond) = @_;
 
-        my $session_id = $params->{session};
+        my $session_id = $params->{session} or do {
+            $respond->(fail
+                code    => 100,
+                message => "Session required"
+            );
+            return
+        };
 
         if (delete $sessions{$session_id}) {
             $respond->(ok);
         } else {
-            $respond->(fail code => 201, message => "Session does not exist");
+            $respond->(fail
+                code    => 201,
+                message => "Session does not exist"
+            );
         }
     };
 
