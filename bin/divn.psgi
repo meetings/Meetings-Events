@@ -251,7 +251,7 @@ builder {
         $respond->(ok %result);
     };
 
-    mount '/inform' => action {
+    mount '/nudge' => action {
         my ($params, $respond) = @_;
 
         $fetch_timer = AnyEvent->timer(
