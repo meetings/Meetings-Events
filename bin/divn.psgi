@@ -46,6 +46,9 @@ my $secret = 'shared secret';
 
 our %seen_events;
 
+our %poll_condvars;
+our %poll_timeout_condvars;
+
 sub action (&) {
     my $action = shift;
 
@@ -106,12 +109,20 @@ sub fetch {
                 my $topics    = Set::Object->new(@{$event->{topics}});
                 my $security  = Set::Object->new(map { Set::Object->new(@$_) } @{$event->{security}});
 
+                warn "New event $id\n";
+
                 next if exists $seen_events{$id} and $updated <= $seen_events{$id}{updated};
+
+                warn "Adding to subscriptions...\n";
 
                 $seen_events{$id}{updated} = $updated;
 
                 while (my ($session_id, $session) = each %sessions) {
+                    warn "- Session $session_id\n";
+                    my $new_events = 0;
+
                     while (my ($subscription_name, $subscription) = each %{ $session->{subscriptions} }) {
+                        warn "   - Subscription '$subscription_name'\n";
                         my $limit_topics   = $subscription->{limit_topics};
                         my $exclude_topics = $subscription->{exclude_topics};
                         warn "Subscription $subscription_name\n";
@@ -121,10 +132,17 @@ sub fetch {
                                 and ($subscription->{finish} == -1 or $timestamp <= $subscription->{finish})
                                 and grep { $_->contains(@$_) } @$limit_topics
                             and not grep { $_->contains(@$_) } @$exclude_topics
-                            and grep { $session->{security}->contains(@$_) } @$security) {
+                            and grep { $session->{security}->contains(@$_) } @$security)
+                        {
+                            warn "     * Adding $id to $subscription_name\n";
                             push @{ $subscription->{incoming} }, $event;
+                            $new_events = 1;
                         }
+                    }
 
+                    if ($new_events) {
+                        warn "Calling cb for '$session_id'\n";
+                        $poll_condvars{$session_id}->send('new');
                     }
                 }
             }
@@ -140,6 +158,33 @@ sub fetch {
             }
 
         };
+}
+
+sub get_new_events_for_session {
+    my ($session_id, $amount, $received) = @_;
+
+    my $session = $sessions{$session_id};
+
+    warn "Polling $session_id...\n";
+
+    my %result;
+
+    while (my ($name, $subscription) = each %{ $session->{subscriptions} }) {
+        my $ignore = $received->{$name} // [];
+
+        warn "\tSubscription $name\n";
+
+        my @events = grep { not $_->{id} ~~ $ignore } @{ $subscription->{incoming} };
+
+        if (@events) {
+            push @{ $result{$name}{new} }, @events;
+            push @{ $result{$name}{confirmed} }, map { $_->{id} } @events;
+
+            $subscription->{incoming} = [];
+        }
+    }
+
+    return %result;
 }
 
 builder {
@@ -285,27 +330,51 @@ builder {
             return
         };
 
+        unless (exists $sessions{$session_id}) {
+            #warn "Polled invalid session '$session_id'\n";
+            $respond->(fail $request,
+                code    => 601,
+                message => "Session does not exist"
+            );
+            return
+        }
+
         my $amount     = $params->{amount};
         my $received   = $params->{received};
 
-        my $session = $sessions{$session_id};
+        my $open_time = time;
 
-        my %result;
-
-        warn "Polling $session_id...\n";
-
-        while (my ($name, $subscription) = each %{ $session->{subscriptions} }) {
-            my $ignore = $received->{$name} // [];
-
-            warn "\tSubscription $name\n";
-
-            my @events = grep { not $_->{id} ~~ $ignore } @{ $subscription->{incoming} };
-
-            push @{ $result{$name}{new} }, @events;
-            push @{ $result{$name}{confirmed} }, map { $_->{id} } @events;
-
-            $subscription->{incoming} = [];
+        if (my $old_poll = $poll_condvars{$session_id}) {
+            $old_poll->send('fail');
         }
+
+        my $poll = $poll_condvars{$session_id} = AnyEvent->condvar;
+
+        $poll_timeout_condvars{$session_id} = AnyEvent->timer(
+            after => 25,
+            cb    => sub { $poll->send('timeout') }
+        );
+
+        $poll->cb(sub {
+            my @msg = shift->recv;
+
+            warn "Poll callback for '$session_id': @msg\n";
+
+            if ($msg[0] eq 'fail') {
+                $respond->(fail $request,
+                    code => 100,
+                    message => "TODO"
+                );
+                return
+            } elsif ($msg[0] eq 'timeout') {
+                $respond->(fail $request,
+                    code => 100,
+                    message => "timeout"
+                );
+                return
+            }
+
+            my %result = get_new_events_for_session($session_id, $amount, $received);
 
             $respond->(ok $request, %result);
         });
