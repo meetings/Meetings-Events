@@ -213,21 +213,21 @@ my $open = action {
     my $domain = $params->{domain};
 
     http_get "$authenticator?token=$token" . ($domain ? "&domain=$domain" : ()),
-    sub {
-        my ($data, $headers) = @_;
+        sub {
+            my ($data, $headers) = @_;
 
-        my $response = eval { JSON::decode_json($data) };
+            my $response = eval { JSON::decode_json($data) };
 
-        if ($@) {
-            $respond->(fail $request,
-                code    => 101,
-                message => "Communication error"
-            );
-        }
+            if ($@) {
+                $respond->(fail $request,
+                    code    => 101,
+                    message => "Communication error"
+                );
+            }
 
-        my $session_id = create_uuid_as_string(UUID_RANDOM);
+            my $session_id = create_uuid_as_string(UUID_RANDOM);
 
-        warn "New session: $session_id\n";
+            warn "New session: $session_id\n";
 
             $sessions{$session_id} = {
                 token    => $token,
@@ -240,8 +240,8 @@ my $open = action {
                 )
             };
 
-        $respond->(ok $request, session => $session_id);
-    };
+            $respond->(ok $request, session => $session_id);
+        };
 };
 
 my $close = action {
