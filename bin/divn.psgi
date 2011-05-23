@@ -120,6 +120,8 @@ sub fetch {
 
             warn "Got " . @$events . " events\n";
 
+            my %new_events;
+
             for my $event (@$events) {
                 my $id        = $event->{id};
                 my $updated   = $event->{updated};
@@ -136,33 +138,25 @@ sub fetch {
                 $seen_events{$id}{updated} = $updated;
 
                 while (my ($session_id, $session) = each %sessions) {
-                    warn "- Session $session_id\n";
-                    my $new_events = 0;
-
                     while (my ($subscription_name, $subscription) = each %{ $session->{subscriptions} }) {
-                        warn "   - Subscription '$subscription_name'\n";
                         my $limit_topics   = $subscription->{limit_topics};
                         my $exclude_topics = $subscription->{exclude_topics};
-                        warn "Subscription $subscription_name\n";
-                        warn "Event topics: $topics\n";
-                        warn "Limit topics: $limit_topics\n";
+
                         if ($timestamp >= $subscription->{start}
                                 and ($subscription->{finish} == -1 or $timestamp <= $subscription->{finish})
                                 and grep { $_->contains(@$_) } @$limit_topics
                             and not grep { $_->contains(@$_) } @$exclude_topics
                             and grep { $session->{security}->contains(@$_) } @$security)
                         {
-                            warn "     * Adding $id to $subscription_name\n";
                             push @{ $subscription->{incoming} }, $event;
-                            $new_events = 1;
+                            $new_events{$session_id} = 1;
                         }
                     }
-
-                    if ($new_events) {
-                        warn "Calling cb for '$session_id'\n";
-                        $poll_condvars{$session_id}->send('new');
-                    }
                 }
+            }
+
+            for my $session_id (keys %new_events) {
+                $sessions{$session_id}{poll_cv}->send('new') if $sessions{$session_id}{poll_cv};
             }
 
             $source_after  = $before;
