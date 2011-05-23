@@ -19,14 +19,25 @@ use Data::Dumper 'Dumper';
 use URI::Escape qw/uri_escape/;
 use Set::Object;
 
-sub todo { die "Unimplemented: " . join "\n", @_ }
-sub ok   {
+sub ok {
     my $req = shift;
-    [200, ['Content-Type', 'text/javascript'], [$req->parameters->{callback} . '(' . JSON::encode_json({result => {@_}}) . ')']]
+    _build_response($req, { result => { @_ } });
 }
+
 sub fail {
     my $req = shift;
-    [200, ['Content-Type', 'text/javascript'], [$req->parameters->{callback} . '(' . JSON::encode_json({error  => {@_}}) . ')']]
+    _build_response($req, { error => { @_ } });
+}
+
+sub _build_response {
+    my $req = shift;
+    [ 200,
+      [ 'Content-Type', 'text/javascript' ],
+      [ $req->parameters->{callback} . '(' .
+          JSON::encode_json(@_) .
+        ')'
+      ]
+    ]
 }
 
 my %sessions;
@@ -57,11 +68,11 @@ sub action (&) {
         my $req    = Plack::Request->new($env);
         my $params = eval { JSON::decode_json($req->parameters->{params} // "{}") };
 
-        #warn "Request [" . $req->uri . "]\n";
-
         if ($@) {
             warn "Invalid JSON params: $@\n";
-            return fail $req, code => 100, message => 'Invalid params';
+            return fail $req,
+                code    => 100,
+                message => 'Invalid params';
         }
 
         $req->parameters->{callback} //= 'parseResult';
@@ -172,7 +183,7 @@ sub get_new_events_for_session {
     while (my ($name, $subscription) = each %{ $session->{subscriptions} }) {
         my $ignore = $received->{$name} // [];
 
-        warn "\tSubscription $name\n";
+        warn "- Subscription $name\n";
 
         my @events = grep { not $_->{id} ~~ $ignore } @{ $subscription->{incoming} };
 
@@ -187,175 +198,172 @@ sub get_new_events_for_session {
     return %result;
 }
 
-builder {
-    #enable 'SimpleLogger', level => 'debug';
+my $open = action {
+    my ($params, $request, $respond) = @_;
 
-    mount '/open' => action {
-        my ($params, $request, $respond) = @_;
-
-        my $token = $params->{token} or do {
-            $respond->(fail $request,
-                code    => 100,
-                message => "Token required"
-            );
-            return
-        };
-
-        my $domain = $params->{domain};
-
-        http_get "$authenticator?token=$token" . ($domain ? "&domain=$domain" : ()),
-            sub {
-                my ($data, $headers) = @_;
-
-                my $response = eval { JSON::decode_json($data) };
-
-                if ($@) {
-                    $respond->(fail $request,
-                        code    => 101,
-                        message => "Communication error"
-                    );
-                }
-
-                my $session_id = create_uuid_as_string(UUID_RANDOM);
-
-                warn "New session: $session_id\n";
-
-                $sessions{$session_id} = {
-                    token    => $token,
-                    security => Set::Object->new(@{ $response->{result}{security} || [] }),
-                };
-
-                $respond->(ok $request, session => $session_id);
-            };
-    };
-
-    mount '/close' => action {
-        my ($params, $request, $respond) = @_;
-
-        my $session_id = $params->{session} or do {
-            $respond->(fail $request,
-                code    => 100,
-                message => "Session required"
-            );
-            return
-        };
-
-        if (delete $sessions{$session_id}) {
-            $respond->(ok);
-        } else {
-            $respond->(fail $request,
-                code    => 201,
-                message => "Session does not exist"
-            );
-        }
-    };
-
-    mount '/subscribe' => action {
-        my ($params, $request, $respond) = @_;
-
-        my $session_id     = $params->{session};
-        my $name           = $params->{name};
-        my $limit_topics   = Set::Object->new(map { Set::Object->new(@$_) } @{ $params->{limit_topics}   // [[]] });
-        my $exclude_topics = Set::Object->new(map { Set::Object->new(@$_) } @{ $params->{exclude_topics} // [] });
-
-        my $start  = $params->{start}  // time;
-        my $finish = $params->{finish} // -1;
-
-        unless (defined $session_id and exists $sessions{$session_id}) {
-            $respond->(fail $request,
-                code    => 301,
-                message => "Invalid session"
-            );
-            return
-        }
-
-        if (exists $sessions{$session_id}{subscriptions}{$name}) {
-            $respond->(fail $request,
-                code    => 302,
-                message => "Subscription already exists"
-            );
-            return
-        }
-
-        warn "New subscription '$name' for session '$session_id'\n";
-        warn "Start: $start, finish: $finish\n";
-        warn "Limit: $limit_topics\n";
-        warn "Exclude: $exclude_topics\n";
-
-        $sessions{$session_id}{subscriptions}{$name} = {
-            start          => $start,
-            finish         => $finish,
-            limit_topics   => $limit_topics,
-            exclude_topics => $exclude_topics
-        };
-
-        $respond->(ok $request,
-            start  => $start,
-            finish => $finish
+    my $token = $params->{token} or do {
+        $respond->(fail $request,
+            code    => 100,
+            message => "Token required"
         );
+        return
     };
 
-    mount '/unsubscribe' => action {
-        my ($params, $request, $respond) = @_;
+    my $domain = $params->{domain};
 
-        my $session_id = $params->{session};
-        my $name       = $params->{subscription};
+    http_get "$authenticator?token=$token" . ($domain ? "&domain=$domain" : ()),
+    sub {
+        my ($data, $headers) = @_;
 
-        unless (exists $sessions{$session_id}) {
+        my $response = eval { JSON::decode_json($data) };
+
+        if ($@) {
             $respond->(fail $request,
-                code    => 501,
-                message => "Session does not exist"
-            );
-            return
-        }
-
-        if (delete $sessions{$session_id}{subscriptions}{$name}) {
-            $respond->(ok);
-        } else {
-            $respond->(fail $request,
-                code    => 502,
-                message => "Subscription does not exist"
+                code    => 101,
+                message => "Communication error"
             );
         }
-    };
 
-    mount '/poll' => action {
-        my ($params, $request, $respond) = @_;
+        my $session_id = create_uuid_as_string(UUID_RANDOM);
 
-        my $session_id = $params->{session} or do {
-            $respond->(fail $request,
-                code    => 100,
-                message => "Session required"
-            );
-            return
+        warn "New session: $session_id\n";
+
+        $sessions{$session_id} = {
+            token    => $token,
+            security => Set::Object->new(@{ $response->{result}{security} || [] }),
         };
 
-        unless (exists $sessions{$session_id}) {
-            #warn "Polled invalid session '$session_id'\n";
-            $respond->(fail $request,
-                code    => 601,
-                message => "Session does not exist"
-            );
-            return
-        }
+        $respond->(ok $request, session => $session_id);
+    };
+};
 
-        my $amount     = $params->{amount};
-        my $received   = $params->{received};
+my $close = action {
+    my ($params, $request, $respond) = @_;
 
-        my $open_time = time;
-
-        if (my $old_poll = $poll_condvars{$session_id}) {
-            $old_poll->send('fail');
-        }
-
-        my $poll = $poll_condvars{$session_id} = AnyEvent->condvar;
-
-        $poll_timeout_condvars{$session_id} = AnyEvent->timer(
-            after => 25,
-            cb    => sub { $poll->send('timeout') }
+    my $session_id = $params->{session} or do {
+        $respond->(fail $request,
+            code    => 100,
+            message => "Session required"
         );
+        return
+    };
 
-        $poll->cb(sub {
+    if (delete $sessions{$session_id}) {
+        $respond->(ok);
+    } else {
+        $respond->(fail $request,
+            code    => 201,
+            message => "Session does not exist"
+        );
+    }
+};
+
+my $subscribe = action {
+    my ($params, $request, $respond) = @_;
+
+    my $session_id     = $params->{session};
+    my $name           = $params->{name};
+    my $limit_topics   = Set::Object->new(map { Set::Object->new(@$_) } @{ $params->{limit_topics}   // [[]] });
+    my $exclude_topics = Set::Object->new(map { Set::Object->new(@$_) } @{ $params->{exclude_topics} // [] });
+
+    my $start  = $params->{start}  // time;
+    my $finish = $params->{finish} // -1;
+
+    unless (defined $session_id and exists $sessions{$session_id}) {
+        $respond->(fail $request,
+            code    => 301,
+            message => "Invalid session"
+        );
+        return
+    }
+
+    if (exists $sessions{$session_id}{subscriptions}{$name}) {
+        $respond->(fail $request,
+            code    => 302,
+            message => "Subscription already exists"
+        );
+        return
+    }
+
+    warn "New subscription '$name' for session '$session_id'\n";
+    warn "Start: $start, finish: $finish\n";
+    warn "Limit: $limit_topics\n";
+    warn "Exclude: $exclude_topics\n";
+
+    $sessions{$session_id}{subscriptions}{$name} = {
+        start          => $start,
+        finish         => $finish,
+        limit_topics   => $limit_topics,
+        exclude_topics => $exclude_topics
+    };
+
+    $respond->(ok $request,
+        start  => $start,
+        finish => $finish
+    );
+};
+
+my $unsubscribe = action {
+    my ($params, $request, $respond) = @_;
+
+    my $session_id = $params->{session};
+    my $name       = $params->{subscription};
+
+    unless (exists $sessions{$session_id}) {
+        $respond->(fail $request,
+            code    => 501,
+            message => "Session does not exist"
+        );
+        return
+    }
+
+    if (delete $sessions{$session_id}{subscriptions}{$name}) {
+        $respond->(ok);
+    } else {
+        $respond->(fail $request,
+            code    => 502,
+            message => "Subscription does not exist"
+        );
+    }
+};
+
+my $poll = action {
+    my ($params, $request, $respond) = @_;
+
+    my $session_id = $params->{session} or do {
+        $respond->(fail $request,
+            code    => 100,
+            message => "Session required"
+        );
+        return
+    };
+
+    unless (exists $sessions{$session_id}) {
+        #warn "Polled invalid session '$session_id'\n";
+        $respond->(fail $request,
+            code    => 601,
+            message => "Session does not exist"
+        );
+        return
+    }
+
+    my $amount     = $params->{amount};
+    my $received   = $params->{received};
+
+    my $open_time = time;
+
+    if (my $old_poll = $poll_condvars{$session_id}) {
+        $old_poll->send('fail');
+    }
+
+    my $poll = $poll_condvars{$session_id} = AnyEvent->condvar;
+
+    $poll_timeout_condvars{$session_id} = AnyEvent->timer(
+        after => 25,
+        cb    => sub { $poll->send('timeout') }
+    );
+
+    $poll->cb(sub {
             my @msg = shift->recv;
 
             warn "Poll callback for '$session_id': @msg\n";
@@ -378,16 +386,26 @@ builder {
 
             $respond->(ok $request, %result);
         });
-    };
+};
 
-    mount '/nudge' => action {
-        my ($params, $request, $respond) = @_;
+my $nudge = action {
+    my ($params, $request, $respond) = @_;
 
-        $fetch_timer = AnyEvent->timer(
-            after => 0.1,
-            cb    => \&fetch
-        );
+    $fetch_timer = AnyEvent->timer(
+        after => 0.1,
+        cb    => \&fetch
+    );
 
-        $respond->(ok);
-    };
+    $respond->(ok);
+};
+
+builder {
+    #enable 'SimpleLogger', level => 'debug';
+
+    mount '/open'        => $open;
+    mount '/close'       => $close;
+    mount '/subscribe'   => $subscribe;
+    mount '/unsubscribe' => $unsubscribe;
+    mount '/poll'        => $poll;
+    mount '/nudge'       => $nudge;
 }
