@@ -19,11 +19,15 @@ use Data::Dumper 'Dumper';
 use URI::Escape qw/uri_escape/;
 use Set::Object;
 
-our $JSONP_CALLBACK;
-
 sub todo { die "Unimplemented: " . join "\n", @_ }
-sub ok   { [200, ['Content-Type', 'text/json'], [$JSONP_CALLBACK . '(' . JSON::encode_json({result => {@_}}) . ')']] }
-sub fail { [200, ['Content-Type', 'text/json'], [$JSONP_CALLBACK . '(' . JSON::encode_json({error  => {@_}}) . ')']] }
+sub ok   {
+    my $req = shift;
+    [200, ['Content-Type', 'text/javascript'], [$req->parameters->{callback} . '(' . JSON::encode_json({result => {@_}}) . ')']]
+}
+sub fail {
+    my $req = shift;
+    [200, ['Content-Type', 'text/javascript'], [$req->parameters->{callback} . '(' . JSON::encode_json({error  => {@_}}) . ')']]
+}
 
 my %sessions;
 
@@ -50,17 +54,19 @@ sub action (&) {
         my $req    = Plack::Request->new($env);
         my $params = eval { JSON::decode_json($req->parameters->{params} // "{}") };
 
+        #warn "Request [" . $req->uri . "]\n";
+
         if ($@) {
             warn "Invalid JSON params: $@\n";
-            return fail code => 100, message => 'Invalid params';
+            return fail $req, code => 100, message => 'Invalid params';
         }
 
-        $JSONP_CALLBACK = $params->{callback} // 'parseResult';
+        $req->parameters->{callback} //= 'parseResult';
 
         sub {
             my $respond = shift;
 
-            $action->($params, $respond);
+            $action->($params, $req, $respond);
         }
     }
 }
@@ -140,10 +146,10 @@ builder {
     #enable 'SimpleLogger', level => 'debug';
 
     mount '/open' => action {
-        my ($params, $respond) = @_;
+        my ($params, $request, $respond) = @_;
 
         my $token = $params->{token} or do {
-            $respond->(fail
+            $respond->(fail $request,
                 code    => 100,
                 message => "Token required"
             );
@@ -159,7 +165,7 @@ builder {
                 my $response = eval { JSON::decode_json($data) };
 
                 if ($@) {
-                    $respond->(fail
+                    $respond->(fail $request,
                         code    => 101,
                         message => "Communication error"
                     );
@@ -174,15 +180,15 @@ builder {
                     security => Set::Object->new(@{ $response->{result}{security} || [] }),
                 };
 
-                $respond->(ok session => $session_id);
+                $respond->(ok $request, session => $session_id);
             };
     };
 
     mount '/close' => action {
-        my ($params, $respond) = @_;
+        my ($params, $request, $respond) = @_;
 
         my $session_id = $params->{session} or do {
-            $respond->(fail
+            $respond->(fail $request,
                 code    => 100,
                 message => "Session required"
             );
@@ -192,7 +198,7 @@ builder {
         if (delete $sessions{$session_id}) {
             $respond->(ok);
         } else {
-            $respond->(fail
+            $respond->(fail $request,
                 code    => 201,
                 message => "Session does not exist"
             );
@@ -200,7 +206,7 @@ builder {
     };
 
     mount '/subscribe' => action {
-        my ($params, $respond) = @_;
+        my ($params, $request, $respond) = @_;
 
         my $session_id     = $params->{session};
         my $name           = $params->{name};
@@ -211,7 +217,7 @@ builder {
         my $finish = $params->{finish} // -1;
 
         unless (defined $session_id and exists $sessions{$session_id}) {
-            $respond->(fail
+            $respond->(fail $request,
                 code    => 301,
                 message => "Invalid session"
             );
@@ -219,7 +225,7 @@ builder {
         }
 
         if (exists $sessions{$session_id}{subscriptions}{$name}) {
-            $respond->(fail
+            $respond->(fail $request,
                 code    => 302,
                 message => "Subscription already exists"
             );
@@ -238,20 +244,20 @@ builder {
             exclude_topics => $exclude_topics
         };
 
-        $respond->(ok
+        $respond->(ok $request,
             start  => $start,
             finish => $finish
         );
     };
 
     mount '/unsubscribe' => action {
-        my ($params, $respond) = @_;
+        my ($params, $request, $respond) = @_;
 
         my $session_id = $params->{session};
         my $name       = $params->{subscription};
 
         unless (exists $sessions{$session_id}) {
-            $respond->(fail
+            $respond->(fail $request,
                 code    => 501,
                 message => "Session does not exist"
             );
@@ -261,7 +267,7 @@ builder {
         if (delete $sessions{$session_id}{subscriptions}{$name}) {
             $respond->(ok);
         } else {
-            $respond->(fail
+            $respond->(fail $request,
                 code    => 502,
                 message => "Subscription does not exist"
             );
@@ -269,10 +275,10 @@ builder {
     };
 
     mount '/poll' => action {
-        my ($params, $respond) = @_;
+        my ($params, $request, $respond) = @_;
 
         my $session_id = $params->{session} or do {
-            $respond->(fail
+            $respond->(fail $request,
                 code    => 100,
                 message => "Session required"
             );
@@ -301,11 +307,12 @@ builder {
             $subscription->{incoming} = [];
         }
 
-        $respond->(ok %result);
+            $respond->(ok $request, %result);
+        });
     };
 
     mount '/nudge' => action {
-        my ($params, $respond) = @_;
+        my ($params, $request, $respond) = @_;
 
         $fetch_timer = AnyEvent->timer(
             after => 0.1,
