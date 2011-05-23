@@ -54,6 +54,8 @@ our $FETCH_STARTUP_DELAY = 1;
 our $FETCH_SYNC_DELAY    = 10;
 our $FETCH_AMOUNT        = 0;
 
+our $REAP_TIMEOUT = 300;
+
 my $source_after  = -1;
 my $source_before = -1;
 
@@ -236,10 +238,16 @@ my $open = action {
 
         warn "New session: $session_id\n";
 
-        $sessions{$session_id} = {
-            token    => $token,
-            security => Set::Object->new(@{ $response->{result}{security} || [] }),
-        };
+            $sessions{$session_id} = {
+                token    => $token,
+                security => Set::Object->new(@{ $response->{result}{security} || [] }),
+                reaper   => AnyEvent->timer(
+                    after => $REAP_TIMEOUT,
+                    cb    => sub {
+                        delete $sessions{$session_id};
+                    }
+                )
+            };
 
         $respond->(ok $request, session => $session_id);
     };
