@@ -36,7 +36,7 @@ my $authenticator = "$event_source/authenticate";
 my $fetch         = "$event_source/fetch";
 
 our $FETCH_STARTUP_DELAY = 1;
-our $FETCH_SYNC_DELAY    = 30;
+our $FETCH_SYNC_DELAY    = 10;
 our $FETCH_AMOUNT        = 0;
 
 my $source_after  = -1;
