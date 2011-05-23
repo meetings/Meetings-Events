@@ -139,14 +139,11 @@ sub fetch {
 
                 while (my ($session_id, $session) = each %sessions) {
                     while (my ($subscription_name, $subscription) = each %{ $session->{subscriptions} }) {
-                        my $limit_topics   = $subscription->{limit_topics};
-                        my $exclude_topics = $subscription->{exclude_topics};
-
                         if ($timestamp >= $subscription->{start}
-                                and ($subscription->{finish} == -1 or $timestamp <= $subscription->{finish})
-                                and grep { $_->contains(@$_) } @$limit_topics
-                            and not grep { $_->contains(@$_) } @$exclude_topics
-                            and grep { $session->{security}->contains(@$_) } @$security)
+                            and ($subscription->{finish} == -1 or $timestamp <= $subscription->{finish})
+                            and     grep { $topics->contains(@$_)              } @{ $subscription->{limit_topics}   }
+                            and not grep { $topics->contains(@$_)              } @{ $subscription->{exclude_topics} }
+                            and     grep { $session->{security}->contains(@$_) } @$security)
                         {
                             push @{ $subscription->{incoming} }, $event;
                             $new_events{$session_id} = 1;
