@@ -362,14 +362,14 @@ builder {
 
             if ($msg[0] eq 'fail') {
                 $respond->(fail $request,
-                    code => 100,
+                    code    => 600,
                     message => "TODO"
                 );
                 return
             } elsif ($msg[0] eq 'timeout') {
                 $respond->(fail $request,
-                    code => 100,
-                    message => "timeout"
+                    code    => 603,
+                    message => "Timeout"
                 );
                 return
             }
