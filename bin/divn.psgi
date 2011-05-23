@@ -370,29 +370,42 @@ my $poll = action {
     );
 
     $poll->cb(sub {
-            my @msg = shift->recv;
+        my ($msg) = shift->recv;
+
+        warn "Poll callback for '$session_id': $msg\n";
 
         delete $sessions{$session_id}{poll_cv};
         delete $sessions{$session_id}{poll_timeout};
 
-            if ($msg[0] eq 'fail') {
+        given ($msg) {
+            when ('fail') {
                 $respond->(fail $request,
-                    code    => 600,
-                    message => "TODO"
+                    code    => 604,
+                    message => "Newer poll requested"
                 );
-                return
-            } elsif ($msg[0] eq 'timeout') {
+            }
+            when ('timeout') {
                 $respond->(fail $request,
                     code    => 603,
                     message => "Timeout"
                 );
-                return
             }
+            when ('close') {
+                $respond->(fail $request,
+                    code    => 605,
+                    message => "Session closed"
+                );
+            }
+            when ('new') {
+                my %result = get_new_events_for_session($session_id, $amount, $received);
 
-            my %result = get_new_events_for_session($session_id, $amount, $received);
-
-            $respond->(ok $request, %result);
-        });
+                $respond->(ok $request, %result);
+            }
+            default {
+                $respond->(fail code => 600, message => 'Internal error');
+            }
+        }
+    });
 };
 
 my $nudge = action {
