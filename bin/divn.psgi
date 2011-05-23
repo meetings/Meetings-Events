@@ -355,8 +355,8 @@ my $poll = action {
         return
     }
 
-    my $amount     = $params->{amount};
-    my $received   = $params->{received};
+    my $amount   = $params->{amount};
+    my $received = $params->{received};
 
     if (my $old_poll = $sessions{$session_id}{poll_cv}) {
         $old_poll->send('fail');
