@@ -19,6 +19,8 @@ use Data::Dumper 'Dumper';
 use URI::Escape qw/uri_escape/;
 use Set::Object;
 
+# Utility objects for easy responses
+
 sub ok {
     my $req = shift;
     _build_response($req, { result => { @_ } });
@@ -40,6 +42,8 @@ sub _build_response {
     ]
 }
 
+# Globals etc.
+
 my %sessions;
 
 my $event_source  = 'http://dev.meetin.gs/event_source_gateway';
@@ -59,6 +63,13 @@ our %seen_events;
 
 our %poll_condvars;
 our %poll_timeout_condvars;
+
+our $fetch_timer = AnyEvent->timer(
+    after => $FETCH_STARTUP_DELAY,
+    cb    => \&fetch
+);
+
+# Create an action easily
 
 sub action (&) {
     my $action = shift;
@@ -85,10 +96,7 @@ sub action (&) {
     }
 }
 
-our $fetch_timer = AnyEvent->timer(
-    after => $FETCH_STARTUP_DELAY,
-    cb    => \&fetch
-);
+# Subroutines
 
 sub fetch {
     my $uri = "$fetch?secret=" . uri_escape($secret) . "&after=$source_after&before=$source_before";
