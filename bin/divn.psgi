@@ -150,7 +150,9 @@ builder {
             return
         };
 
-        http_get "$authenticator?token=$token",
+        my $domain = $params->{domain};
+
+        http_get "$authenticator?token=$token" . ($domain ? "&domain=$domain" : ()),
             sub {
                 my ($data, $headers) = @_;
 
