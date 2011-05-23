@@ -63,9 +63,6 @@ my $secret = 'shared secret';
 
 our %seen_events;
 
-our %poll_condvars;
-our %poll_timeout_condvars;
-
 our $fetch_timer = AnyEvent->timer(
     after => $FETCH_STARTUP_DELAY,
     cb    => \&fetch
@@ -264,7 +261,8 @@ my $close = action {
         return
     };
 
-    if (delete $sessions{$session_id}) {
+    if (my $session = delete $sessions{$session_id}) {
+        $session->{poll_cv}->send('close') if $session->{poll_cv};
         $respond->(ok);
     } else {
         $respond->(fail $request,
@@ -366,15 +364,13 @@ my $poll = action {
     my $amount     = $params->{amount};
     my $received   = $params->{received};
 
-    my $open_time = time;
-
-    if (my $old_poll = $poll_condvars{$session_id}) {
+    if (my $old_poll = $sessions{$session_id}{poll_cv}) {
         $old_poll->send('fail');
     }
 
-    my $poll = $poll_condvars{$session_id} = AnyEvent->condvar;
+    my $poll = $sessions{$session_id}{poll_cv} = AnyEvent->condvar;
 
-    $poll_timeout_condvars{$session_id} = AnyEvent->timer(
+    $sessions{$session_id}{poll_timeout} = AnyEvent->timer(
         after => 25,
         cb    => sub { $poll->send('timeout') }
     );
@@ -382,7 +378,8 @@ my $poll = action {
     $poll->cb(sub {
             my @msg = shift->recv;
 
-            warn "Poll callback for '$session_id': @msg\n";
+        delete $sessions{$session_id}{poll_cv};
+        delete $sessions{$session_id}{poll_timeout};
 
             if ($msg[0] eq 'fail') {
                 $respond->(fail $request,
