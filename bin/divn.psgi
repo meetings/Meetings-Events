@@ -32,11 +32,11 @@ sub fail {
 }
 
 sub _build_response {
-    my $req = shift;
+    my ($req, $response) = @_;
     [ 200,
       [ 'Content-Type', 'text/javascript' ],
       [ $req->parameters->{callback} . '(' .
-          JSON::encode_json(@_) .
+          JSON::encode_json($response) .
         ')'
       ]
     ]
