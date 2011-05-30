@@ -111,7 +111,13 @@ sub fetch {
         sub {
             my ($data, $headers) = @_;
 
-            my $response = JSON::decode_json($data);
+            my $response = eval { JSON::decode_json($data) };
+
+            if ($@) {
+                warn "Invalid response from source: $@\n";
+                goto DONE;
+            }
+
             my $result   = $response->{result};
 
             my $after  = $result->{after};
@@ -158,6 +164,8 @@ sub fetch {
 
             $source_after  = $before;
             $source_before = -1;
+
+            DONE:
 
             if ($source_after != -1) {
                 $fetch_timer = AnyEvent->timer(
