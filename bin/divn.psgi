@@ -46,6 +46,7 @@ sub _build_response {
 
 my %sessions;
 
+my $gateway       = 'http://servers.dicole.com:20036/nudge';
 my $event_source  = 'http://dev.meetin.gs/event_source_gateway';
 my $authenticator = "$event_source/authenticate";
 my $fetch         = "$event_source/fetch";
@@ -98,7 +99,7 @@ sub action (&) {
 # Subroutines
 
 sub fetch {
-    my $uri = "$fetch?secret=" . uri_escape($secret) . "&after=$source_after&before=$source_before";
+    my $uri = "$fetch?secret=" . uri_escape($secret) . "&after=$source_after&before=$source_before&gateway=" . uri_escape($gateway);
 
     if (defined $FETCH_AMOUNT) {
         $uri .= "&amount=$FETCH_AMOUNT";
