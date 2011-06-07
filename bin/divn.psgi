@@ -137,6 +137,9 @@ sub fetch {
                 my $security  = Set::Object->new(map { Set::Object->new(@$_) } @{$event->{security}});
 
                 warn "New event $id\n";
+                warn "Topics: $topics\n";
+                warn "Security: $security\n";
+                warn "Timestamp: $timestamp\n";
 
                 next if exists $seen_events{$id} and $updated <= $seen_events{$id}{updated};
 
@@ -146,12 +149,18 @@ sub fetch {
 
                 while (my ($session_id, $session) = each %sessions) {
                     while (my ($subscription_name, $subscription) = each %{ $session->{subscriptions} }) {
-                        if ($timestamp >= $subscription->{start}
-                            and ($subscription->{finish} == -1 or $timestamp <= $subscription->{finish})
-                            and     grep { $topics->contains(@$_)              } @{ $subscription->{limit_topics}   }
-                            and not grep { $topics->contains(@$_)              } @{ $subscription->{exclude_topics} }
-                            and     grep { $session->{security}->contains(@$_) } @$security)
-                        {
+                        my $after_start = $timestamp >= $subscription->{start}
+                            or warn "Event is before interest\n";
+                        my $before_finish = ($subscription->{finish} == -1 or $timestamp <= $subscription->{finish})
+                            or warn "Event is after interest\n";
+                        my $is_interested   =     grep { $topics->contains(@$_) } @{ $subscription->{limit_topics}   }
+                            or warn "Not interested\n";
+                        my $is_not_excluded = not grep { $topics->contains(@$_) } @{ $subscription->{exclude_topics} }
+                            or warn "Excluded\n";
+                        my $has_permissions =     grep { $session->{security}->contains(@$_) } @$security
+                            or warn "Not permitted\n";
+
+                        if ($after_start and $before_finish and $is_interested and $is_not_excluded and $has_permissions) {
                             push @{ $subscription->{incoming} }, $event;
                             $new_events{$session_id} = 1;
                         }
