@@ -161,7 +161,7 @@ sub fetch {
                             or warn "Not permitted\n";
 
                         if ($after_start and $before_finish and $is_interested and $is_not_excluded and $has_permissions) {
-                            push @{ $subscription->{incoming} }, $event;
+                            push @{ $subscription->{incoming} }, { map { $_ => $event->{$_} } qw/id updated topics data timestamp version/ };
                             $new_events{$session_id} = 1;
                         }
                     }
