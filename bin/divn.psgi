@@ -70,6 +70,12 @@ our $fetch_timer = AnyEvent->timer(
     cb    => \&fetch
 );
 
+sub logger {
+    my ($level, $message) = @_;
+
+    warn "[$level] $message\n";
+}
+
 # Create an action easily
 
 sub action (&) {
@@ -83,7 +89,7 @@ sub action (&) {
         $req->parameters->{callback} //= 'parseResult';
 
         if ($@) {
-            warn "Invalid JSON params: $@\n";
+            logger error => "Invalid JSON params: $@";
             return fail $req,
                 code    => 100,
                 message => 'Invalid params';
@@ -157,7 +163,7 @@ sub fetch {
         $FETCH_AMOUNT = undef;
     }
 
-    warn "Fetching events ($uri)...\n";
+    #warn "Fetching events ($uri)...\n";
 
     http_get $uri,
         sub {
@@ -176,7 +182,7 @@ sub fetch {
             my $before = $result->{before};
             my $events = $result->{events};
 
-            warn "Got " . @$events . " events\n";
+            #warn "Got " . @$events . " events\n";
 
             my %new_events;
 
@@ -187,14 +193,7 @@ sub fetch {
                 my $topics    = Set::Object->new(@{$event->{topics}});
                 my $security  = Set::Object->new(map { Set::Object->new(@$_) } @{$event->{security}});
 
-                #warn "New event $id\n";
-                #warn "Topics: $topics\n";
-                #warn "Security: $security\n";
-                #warn "Timestamp: $timestamp\n";
-
                 next if exists $seen_events{$id} and $updated <= $seen_events{$id}{updated};
-
-                #warn "Adding to subscriptions...\n";
 
                 $seen_events{$id}{updated} = $updated;
 
@@ -208,12 +207,16 @@ sub fetch {
                             ;#or warn "Not interested\n";
                         my $is_not_excluded = not grep { $topics->contains(@$_) } @{ $subscription->{exclude_topics} }
                             ;#or warn "Excluded\n";
-
                         my $has_permissions =     eval { grep { $session->{security}->contains(@$_) } @$security }
                             ;#or warn "Not permitted\n";
 
-                        if ($@) {
-                            warn "WTF: $@\n";
+                        if (grep /wiki_page/, $topics->elements) {
+                            logger info => join("\n",
+                                "*** $subscription_name ***",
+                                "Topics: $topics",
+                                "Limit:  $subscription->{limit_topics}",
+                                "Security: $security",
+                                "Timestamp: $timestamp");
                         }
 
                         if ($after_start and $before_finish and $is_interested and $is_not_excluded and $has_permissions) {
@@ -248,7 +251,7 @@ sub get_new_events_for_session {
 
     my $session = $sessions{$session_id};
 
-    warn "Polling $session_id...\n";
+    logger debug => "Polling $session_id...";
 
     my %result;
 
@@ -394,10 +397,7 @@ my $subscribe = action_with_session {
         return
     }
 
-    warn "New subscription '$name' for session '$session_id'\n";
-    #warn "Start: $start, finish: $finish\n";
-    #warn "Limit: $limit_topics\n";
-    #warn "Exclude: $exclude_topics\n";
+    logger info => "New subscription $name";
 
     $sessions{$session_id}{subscriptions}{$name} = {
         start          => $start,
@@ -495,8 +495,6 @@ my $poll = action_with_session {
 
 my $nudge = action {
     my ($params, $request, $respond) = @_;
-
-    warn "Nudge\n";
 
     $fetch_timer = AnyEvent->timer(
         after => 0,
