@@ -119,7 +119,7 @@ sub fetch {
                 goto DONE;
             }
 
-            my $result   = $response->{result};
+            my $result = $response->{result};
 
             my $after  = $result->{after};
             my $before = $result->{before};
@@ -382,6 +382,13 @@ my $poll = action {
     $sessions{$session_id}{poll_timeout} = AnyEvent->timer(
         after => 25,
         cb    => sub { $poll->send('timeout') }
+    );
+
+    $sessions{$session_id}{reaper} = AnyEvent->timer(
+        after => $REAP_TIMEOUT,
+        cb    => sub {
+            delete $sessions{$session_id};
+        }
     );
 
     $poll->cb(sub {
