@@ -21,24 +21,15 @@ use Data::Dump qw/dump/;
 
 # Utility objects for easy responses
 
-sub ok {
-    my $req = shift;
-    _build_response($req, { result => { @_ } });
-}
-
-sub fail {
-    my $req = shift;
-    _build_response($req, { error => { @_ } });
-}
+sub ok   { _build_response(shift, { result => { @_ } }) }
+sub fail { _build_response(shift, { error  => { @_ } }) }
 
 sub _build_response {
     my ($req, $response) = @_;
+
     [ 200,
       [ 'Content-Type', 'text/javascript' ],
-      [ $req->parameters->{callback} . '(' .
-          JSON::encode_json($response) .
-        ')'
-      ]
+      [ $req->parameters->{callback} . '(' .  JSON::encode_json($response) .  ')' ]
     ]
 }
 
@@ -172,7 +163,7 @@ sub fetch {
             my $response = eval { JSON::decode_json($data) };
 
             if ($@) {
-                warn "Invalid response from source: $@\n";
+                logger error => "Invalid response from source: $@\n";
                 goto DONE;
             }
 
@@ -345,12 +336,13 @@ my $open = action {
 
             my $session_id = create_uuid_as_string(UUID_RANDOM);
 
-            #warn "New session: $session_id\n";
+            logger info => "New session: $session_id\n";
 
             $sessions{$session_id} = {
-                token    => $token,
-                security => Set::Object->new(@{ $response->{result}{security} || [] }),
-                reaper   => AnyEvent->timer(
+                token         => $token,
+                security      => Set::Object->new(@{ $response->{result}{security}      || [] }),
+                invalidate_on => Set::Object->new(@{ $response->{result}{invalidate_on} || [] }),
+                reaper        => AnyEvent->timer(
                     after => $REAP_TIMEOUT,
                     cb    => sub {
                         delete $sessions{$session_id};
@@ -369,7 +361,7 @@ my $close = action_with_session {
 
     if (my $session = delete $sessions{$session_id}) {
         $session->{poll_cv}->send('close') if $session->{poll_cv};
-        $respond->(ok);
+        $respond->(ok $request);
     } else {
         $respond->(fail $request,
             code    => 201,
@@ -419,7 +411,7 @@ my $unsubscribe = action_with_session {
     my $name       = $params->{subscription};
 
     if (delete $sessions{$session_id}{subscriptions}{$name}) {
-        $respond->(ok);
+        $respond->(ok $request);
     } else {
         $respond->(fail $request,
             code    => 502,
@@ -486,6 +478,12 @@ my $poll = action_with_session {
 
                 $respond->(ok $request, %result);
             }
+            when ('invalidate') {
+                $respond->(fail $request,
+                    code    => 606,
+                    message => "Session invalidated"
+                );
+            }
             default {
                 $respond->(fail code => 600, message => 'Internal error');
             }
@@ -496,12 +494,39 @@ my $poll = action_with_session {
 my $nudge = action {
     my ($params, $request, $respond) = @_;
 
+    logger info => "[nudge] ok\n";
+
     $fetch_timer = AnyEvent->timer(
         after => 0,
         cb    => \&fetch
     );
 
-    $respond->(ok);
+    $respond->(ok $request, message => "ok");
+};
+
+my $invalidate = action {
+    my ($params, $request, $respond) = @_;
+
+    my $key = $params->{key} or do {
+        $respond->(fail
+            code    => 700,
+            message => "key required"
+        );
+        return
+    };
+
+    logger info => "[invalidate] key = $key\n";
+
+    while (my ($name, $session) = each %sessions) {
+        if ($session->{invalidate_on}->contains($key)) {
+            logger info => "[invalidate] closing session $name\n";
+
+            delete $sessions{$name};
+            $session->{poll_cv}->send('invalidate') if $session->{poll_cv};
+        }
+    }
+
+    $respond->(ok $request);
 };
 
 builder {
@@ -513,4 +538,5 @@ builder {
     mount '/unsubscribe' => $unsubscribe;
     mount '/poll'        => $poll;
     mount '/nudge'       => $nudge;
+    mount '/invalidate'  => $invalidate;
 }
