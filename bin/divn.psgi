@@ -46,8 +46,8 @@ sub _build_response {
 
 my %sessions;
 
-my $gateway       = 'http://servers.dicole.com:20036/nudge';
-my $event_source  = 'http://dev.meetin.gs/event_source_gateway';
+my $gateway       = 'http://servers.dicole.com:20026/nudge';
+my $event_source  = 'http://meetin.gs/event_source_gateway';
 my $authenticator = "$event_source/authenticate";
 my $fetch         = "$event_source/fetch";
 
@@ -136,29 +136,34 @@ sub fetch {
                 my $topics    = Set::Object->new(@{$event->{topics}});
                 my $security  = Set::Object->new(map { Set::Object->new(@$_) } @{$event->{security}});
 
-                warn "New event $id\n";
-                warn "Topics: $topics\n";
-                warn "Security: $security\n";
-                warn "Timestamp: $timestamp\n";
+                #warn "New event $id\n";
+                #warn "Topics: $topics\n";
+                #warn "Security: $security\n";
+                #warn "Timestamp: $timestamp\n";
 
                 next if exists $seen_events{$id} and $updated <= $seen_events{$id}{updated};
 
-                warn "Adding to subscriptions...\n";
+                #warn "Adding to subscriptions...\n";
 
                 $seen_events{$id}{updated} = $updated;
 
                 while (my ($session_id, $session) = each %sessions) {
                     while (my ($subscription_name, $subscription) = each %{ $session->{subscriptions} }) {
                         my $after_start = $timestamp >= $subscription->{start}
-                            or warn "Event is before interest\n";
+                            ;#or warn "Event is before interest\n";
                         my $before_finish = ($subscription->{finish} == -1 or $timestamp <= $subscription->{finish})
-                            or warn "Event is after interest\n";
+                            ;#or warn "Event is after interest\n";
                         my $is_interested   =     grep { $topics->contains(@$_) } @{ $subscription->{limit_topics}   }
-                            or warn "Not interested\n";
+                            ;#or warn "Not interested\n";
                         my $is_not_excluded = not grep { $topics->contains(@$_) } @{ $subscription->{exclude_topics} }
-                            or warn "Excluded\n";
-                        my $has_permissions =     grep { $session->{security}->contains(@$_) } @$security
-                            or warn "Not permitted\n";
+                            ;#or warn "Excluded\n";
+
+                        my $has_permissions =     eval { grep { $session->{security}->contains(@$_) } @$security }
+                            ;#or warn "Not permitted\n";
+
+                        if ($@) {
+                            warn "WTF: $@\n";
+                        }
 
                         if ($after_start and $before_finish and $is_interested and $is_not_excluded and $has_permissions) {
                             push @{ $subscription->{incoming} }, { map { $_ => $event->{$_} } qw/id updated topics data timestamp version/ };
@@ -199,7 +204,7 @@ sub get_new_events_for_session {
     while (my ($name, $subscription) = each %{ $session->{subscriptions} }) {
         my $ignore = $received->{$name} // [];
 
-        warn "- Subscription $name\n";
+        #warn "- Subscription $name\n";
 
         my @events = grep { not $_->{id} ~~ $ignore } @{ $subscription->{incoming} };
 
@@ -242,7 +247,7 @@ my $open = action {
 
             my $session_id = create_uuid_as_string(UUID_RANDOM);
 
-            warn "New session: $session_id\n";
+            #warn "New session: $session_id\n";
 
             $sessions{$session_id} = {
                 token    => $token,
@@ -309,9 +314,9 @@ my $subscribe = action {
     }
 
     warn "New subscription '$name' for session '$session_id'\n";
-    warn "Start: $start, finish: $finish\n";
-    warn "Limit: $limit_topics\n";
-    warn "Exclude: $exclude_topics\n";
+    #warn "Start: $start, finish: $finish\n";
+    #warn "Limit: $limit_topics\n";
+    #warn "Exclude: $exclude_topics\n";
 
     $sessions{$session_id}{subscriptions}{$name} = {
         start          => $start,
@@ -394,7 +399,7 @@ my $poll = action {
     $poll->cb(sub {
         my ($msg) = shift->recv;
 
-        warn "Poll callback for '$session_id': $msg\n";
+        #warn "Poll callback for '$session_id': $msg\n";
 
         delete $sessions{$session_id}{poll_cv};
         delete $sessions{$session_id}{poll_timeout};
@@ -433,8 +438,10 @@ my $poll = action {
 my $nudge = action {
     my ($params, $request, $respond) = @_;
 
+    warn "Nudge\n";
+
     $fetch_timer = AnyEvent->timer(
-        after => 0.1,
+        after => 0,
         cb    => \&fetch
     );
 
