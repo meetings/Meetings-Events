@@ -80,14 +80,14 @@ sub action (&) {
         my $req    = Plack::Request->new($env);
         my $params = eval { JSON::decode_json($req->parameters->{params} // "{}") };
 
+        $req->parameters->{callback} //= 'parseResult';
+
         if ($@) {
             warn "Invalid JSON params: $@\n";
             return fail $req,
                 code    => 100,
                 message => 'Invalid params';
         }
-
-        $req->parameters->{callback} //= 'parseResult';
 
         sub {
             my $respond = shift;
