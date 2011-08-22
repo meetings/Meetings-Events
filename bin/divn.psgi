@@ -275,18 +275,12 @@ sub propagate_request {
 
     my $url = URI->new(qq[$peer$original_path?params=$encoded_params]);
 
-    warn "Propagating request to $url\n";
-
     http_get $url, sub {
         my ($data, $headers) = @_;
-
-        warn "Propagation response: $data\n";
 
         my $psgi_headers = to_psgi_headers($headers);
 
         my $response = [ 200, $psgi_headers, [ $data ] ];
-
-        warn "Response to client: " . dump($response) . "\n";
 
         $respond->($response);
     };
