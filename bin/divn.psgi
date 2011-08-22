@@ -46,6 +46,7 @@ sub _build_response {
 
 my %sessions;
 
+my $peer          = 'http://localhost:8081';
 my $gateway       = 'http://servers.dicole.com:20026/nudge';
 my $event_source  = 'http://meetin.gs/event_source_gateway';
 my $authenticator = "$event_source/authenticate";
@@ -219,6 +220,36 @@ sub get_new_events_for_session {
     return %result;
 }
 
+sub propagate_request {
+    my ($params, $request, $respond) = @_;
+
+    my $original_path = $request->request_uri;
+
+    http_get "$peer/$original_path", sub {
+        my ($data, $headers) = @_;
+
+        my $psgi_headers = to_psgi_headers($headers);
+
+        $respond->([ 200, $psgi_headers, $data ]);
+    };
+}
+
+sub to_psgi_headers {
+    my $hash = shift;
+
+    my @result;
+
+    while (my ($key, $value) = each %$hash) {
+        my @values = split /,/, $value;
+
+        push @result, [ $key, $_ ] for @values;
+    }
+
+    return \@result
+}
+
+# Actions
+
 my $open = action {
     my ($params, $request, $respond) = @_;
 
@@ -267,13 +298,8 @@ my $open = action {
 my $close = action {
     my ($params, $request, $respond) = @_;
 
-    my $session_id = $params->{session} or do {
-        $respond->(fail $request,
-            code    => 100,
-            message => "Session required"
-        );
-        return
-    };
+    my $session_id = $params->{session}
+        or goto &propagate_request;
 
     if (my $session = delete $sessions{$session_id}) {
         $session->{poll_cv}->send('close') if $session->{poll_cv};
