@@ -15,9 +15,9 @@ use JSON ();
 use UUID::Tiny ':std';
 use Plack::Request;
 use Plack::Builder;
-use Data::Dumper 'Dumper';
 use URI::Escape qw/uri_escape/;
 use Set::Object;
+use Data::Dump qw/dump/;
 
 # Utility objects for easy responses
 
@@ -46,7 +46,7 @@ sub _build_response {
 
 my %sessions;
 
-my $peer          = 'http://localhost:8081';
+my $peer          = 'http://localhost:8082';
 my $gateway       = 'http://servers.dicole.com:20026/nudge';
 my $event_source  = 'http://meetin.gs/event_source_gateway';
 my $authenticator = "$event_source/authenticate";
@@ -88,6 +88,56 @@ sub action (&) {
         }
 
         $req->parameters->{callback} //= 'parseResult';
+
+        sub {
+            my $respond = shift;
+
+            $action->($params, $req, $respond);
+        }
+    }
+}
+
+sub action_with_session (&) {
+    my $action = shift;
+
+    sub {
+        my $env    = shift;
+        my $req    = Plack::Request->new($env);
+        my $params = eval { JSON::decode_json($req->parameters->{params} // "{}") };
+
+        $req->parameters->{callback} //= 'parseResult';
+
+        if ($@) {
+            warn "Invalid JSON params: $@\n";
+            return fail $req,
+                code    => 100,
+                message => 'Invalid params';
+        }
+
+        my $session_id = $params->{session};
+
+        unless ($session_id) {
+            return fail $req,
+                code => 201,
+                message => "Session ID required"
+        }
+
+        my $session = $sessions{$session_id};
+
+        unless ($session) {
+            if ($params->{forwarded}) {
+                return fail $req,
+                    code => 201,
+                    message => "Session does not exist"
+
+            } else {
+                return sub {
+                    my $respond = shift;
+
+                    propagate_request($params, $req, $respond);
+                };
+            }
+        }
 
         sub {
             my $respond = shift;
@@ -223,14 +273,28 @@ sub get_new_events_for_session {
 sub propagate_request {
     my ($params, $request, $respond) = @_;
 
-    my $original_path = $request->request_uri;
+    my $original_path = $request->script_name;
 
-    http_get "$peer/$original_path", sub {
+    $params->{forwarded} = 1;
+
+    my $encoded_params = JSON::encode_json($params);
+
+    my $url = URI->new(qq[$peer$original_path?params=$encoded_params]);
+
+    warn "Propagating request to $url\n";
+
+    http_get $url, sub {
         my ($data, $headers) = @_;
+
+        warn "Propagation response: $data\n";
 
         my $psgi_headers = to_psgi_headers($headers);
 
-        $respond->([ 200, $psgi_headers, $data ]);
+        my $response = [ 200, $psgi_headers, [ $data ] ];
+
+        warn "Response to client: " . dump($response) . "\n";
+
+        $respond->($response);
     };
 }
 
@@ -295,11 +359,10 @@ my $open = action {
         };
 };
 
-my $close = action {
+my $close = action_with_session {
     my ($params, $request, $respond) = @_;
 
-    my $session_id = $params->{session}
-        or goto &propagate_request;
+    my $session_id = $params->{session};
 
     if (my $session = delete $sessions{$session_id}) {
         $session->{poll_cv}->send('close') if $session->{poll_cv};
@@ -312,7 +375,7 @@ my $close = action {
     }
 };
 
-my $subscribe = action {
+my $subscribe = action_with_session {
     my ($params, $request, $respond) = @_;
 
     my $session_id     = $params->{session};
@@ -322,14 +385,6 @@ my $subscribe = action {
 
     my $start  = $params->{start}  // time;
     my $finish = $params->{finish} // -1;
-
-    unless (defined $session_id and exists $sessions{$session_id}) {
-        $respond->(fail $request,
-            code    => 301,
-            message => "Invalid session"
-        );
-        return
-    }
 
     if (exists $sessions{$session_id}{subscriptions}{$name}) {
         $respond->(fail $request,
@@ -357,19 +412,11 @@ my $subscribe = action {
     );
 };
 
-my $unsubscribe = action {
+my $unsubscribe = action_with_session {
     my ($params, $request, $respond) = @_;
 
     my $session_id = $params->{session};
     my $name       = $params->{subscription};
-
-    unless (exists $sessions{$session_id}) {
-        $respond->(fail $request,
-            code    => 501,
-            message => "Session does not exist"
-        );
-        return
-    }
 
     if (delete $sessions{$session_id}{subscriptions}{$name}) {
         $respond->(ok);
@@ -381,25 +428,10 @@ my $unsubscribe = action {
     }
 };
 
-my $poll = action {
+my $poll = action_with_session {
     my ($params, $request, $respond) = @_;
 
-    my $session_id = $params->{session} or do {
-        $respond->(fail $request,
-            code    => 100,
-            message => "Session required"
-        );
-        return
-    };
-
-    unless (exists $sessions{$session_id}) {
-        #warn "Polled invalid session '$session_id'\n";
-        $respond->(fail $request,
-            code    => 601,
-            message => "Session does not exist"
-        );
-        return
-    }
+    my $session_id = $params->{session};
 
     my $amount   = $params->{amount};
     my $received = $params->{received};
