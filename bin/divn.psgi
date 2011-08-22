@@ -286,6 +286,8 @@ sub propagate_request {
 
         my $response = [ 200, $psgi_headers, [ $data ] ];
 
+	logger info => "propagation response: " . dump($response);
+
         $respond->($response);
     };
 }
@@ -298,7 +300,7 @@ sub to_psgi_headers {
     while (my ($key, $value) = each %$hash) {
         my @values = split /,/, $value;
 
-        push @result, [ $key, $_ ] for @values;
+        push @result, $key, $_ for @values;
     }
 
     return \@result
@@ -424,6 +426,8 @@ my $poll = action_with_session {
     my ($params, $request, $respond) = @_;
 
     my $session_id = $params->{session};
+
+    logger info => "polling session $session_id";
 
     my $amount   = $params->{amount};
     my $received = $params->{received};
