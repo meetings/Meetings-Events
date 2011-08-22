@@ -275,8 +275,12 @@ sub propagate_request {
 
     my $url = URI->new(qq[$peer$original_path?params=$encoded_params]);
 
+    logger info => "propagating request to '$url'";
+
     http_get $url, sub {
         my ($data, $headers) = @_;
+
+	logger info => "propagation response: '$data'";
 
         my $psgi_headers = to_psgi_headers($headers);
 
@@ -304,6 +308,8 @@ sub to_psgi_headers {
 
 my $open = action {
     my ($params, $request, $respond) = @_;
+
+    logger info => "open";
 
     my $token = $params->{token} or do {
         $respond->(fail $request,
