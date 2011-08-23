@@ -275,20 +275,22 @@ sub propagate_request {
 
     my $encoded_params = JSON::encode_json($params);
 
-    my $url = URI->new(qq[$peer$original_path?params=$encoded_params]);
+    my $callback = $request->parameters->{callback};
+
+    my $url = URI->new(qq[$peer$original_path?callback=$callback&params=$encoded_params]);
 
     logger info => "propagating request to '$url'";
 
     http_get $url, sub {
         my ($data, $headers) = @_;
 
-	logger info => "propagation response: '$data'";
+        logger info => "propagation response: '$data'";
 
         my $psgi_headers = to_psgi_headers($headers);
 
         my $response = [ 200, $psgi_headers, [ $data ] ];
 
-	logger info => "propagation response: " . dump($response);
+        logger info => "propagation response: " . dump($response);
 
         $respond->($response);
     };
