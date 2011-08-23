@@ -122,6 +122,8 @@ sub action_with_session (&) {
         my $session = $sessions{$session_id};
 
         unless ($session) {
+            logger error => "session does not exist: $session_id";
+
             if ($params->{forwarded} or not $peer) {
                 return fail $req,
                     code => 201,
