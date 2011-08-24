@@ -115,7 +115,7 @@ sub action_with_session (&) {
 
         unless ($session_id) {
             return fail $req,
-                code => 201,
+                code => 601,
                 message => "Session ID required"
         }
 
@@ -126,7 +126,7 @@ sub action_with_session (&) {
 
             if ($params->{forwarded} or not $peer) {
                 return fail $req,
-                    code => 201,
+                    code => 601,
                     message => "Session does not exist"
 
             } else {
