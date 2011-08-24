@@ -122,7 +122,7 @@ sub action_with_session (&) {
         my $session = $sessions{$session_id};
 
         unless ($session) {
-            logger error => "session does not exist: $session_id";
+            logger info => "session does not exist: $session_id";
 
             if ($params->{forwarded} or not $peer) {
                 return fail $req,
@@ -284,13 +284,11 @@ sub propagate_request {
     http_get $url, sub {
         my ($data, $headers) = @_;
 
-        logger info => "propagation response: '$data'";
+        logger info => "responding to propagated request";
 
         my $psgi_headers = to_psgi_headers($headers);
 
         my $response = [ 200, $psgi_headers, [ $data ] ];
-
-        logger info => "propagation response: " . dump($response);
 
         $respond->($response);
     };
