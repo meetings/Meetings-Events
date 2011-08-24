@@ -300,6 +300,8 @@ sub to_psgi_headers {
     my @result;
 
     while (my ($key, $value) = each %$hash) {
+        next if $key ~~ [ qw/URL Sender/ ];
+
         my @values = split /,/, $value;
 
         push @result, $key, $_ for @values;
