@@ -43,6 +43,8 @@ my $event_source  = 'http://meetin.gs/event_source_gateway';
 my $authenticator = "$event_source/authenticate";
 my $fetch         = "$event_source/fetch";
 
+$AnyEvent::HTTP::MAX_PER_HOST = 1000;
+
 our $FETCH_STARTUP_DELAY = 1;
 our $FETCH_SYNC_DELAY    = 10;
 our $FETCH_AMOUNT        = 0;
@@ -281,7 +283,7 @@ sub propagate_request {
 
     logger info => "propagating request to '$url'";
 
-    http_get $url, sub {
+    http_get $url, persistent => 0, sub {
         my ($data, $headers) = @_;
 
         logger info => "responding to propagated request";
