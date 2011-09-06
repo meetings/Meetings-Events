@@ -231,13 +231,10 @@ sub fetch {
 
             DONE:
 
-            if ($source_after != -1 or not defined $before) {
-                $fetch_timer = AnyEvent->timer(
-                    after    => $FETCH_SYNC_DELAY,
-                    cb       => \&fetch
-                );
-            }
-
+            $fetch_timer = AnyEvent->timer(
+                after    => $FETCH_SYNC_DELAY,
+                cb       => \&fetch
+            );
         };
 }
 
