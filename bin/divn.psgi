@@ -37,9 +37,17 @@ sub _build_response {
 
 my %sessions;
 
-my $peer          = 'http://localhost:8082';
-my $gateway       = 'http://servers.dicole.com:20026/nudge';
-my $event_source  = 'http://meetin.gs/event_source_gateway';
+my $conf_file = $ENV{DE_CONFIG};
+my $conf_string = `cat $conf_file`;
+my $conf = eval $conf_string;
+
+die "Error reading config from ENV variable DE_CONFIG" unless $conf;
+
+my $peer = $conf->{peer_url};
+my $gateway = $conf->{nudge_me_url};
+my $event_source = $conf->{event_source_url};
+my $secret = $conf->{shared_secret};
+
 my $authenticator = "$event_source/authenticate";
 my $fetch         = "$event_source/fetch";
 
@@ -53,8 +61,6 @@ our $REAP_TIMEOUT = 300;
 
 my $source_after  = -1;
 my $source_before = -1;
-
-my $secret = 'shared secret';
 
 our %seen_events;
 
@@ -158,7 +164,7 @@ sub fetch {
         $FETCH_AMOUNT = undef;
     }
 
-    #warn "Fetching events ($uri)...\n";
+    warn "Fetching events ($uri)...\n";
 
     http_get $uri,
         sub {
