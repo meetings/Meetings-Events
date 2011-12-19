@@ -445,6 +445,13 @@ my $poll = action_with_session {
         $old_poll->send('fail');
     }
 
+    my %immediate_result = get_new_events_for_session($session_id, $amount, $received);
+
+    if ( keys %immediate_result ) {
+        $respond->( ok $request, %immediate_result );
+        return;
+    }
+
     my $poll = $sessions{$session_id}{poll_cv} = AnyEvent->condvar;
 
     $sessions{$session_id}{poll_timeout} = AnyEvent->timer(
